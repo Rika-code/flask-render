@@ -131,6 +131,10 @@ def get_entrepots():
 def get_depots():
     return jsonify(historique_depots)
 
+@app.route("/")
+def home():
+    return "Hello Railway!"
+
 # -------------------------- Lancement ------------------------ #
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))  # Railway fournit le port
