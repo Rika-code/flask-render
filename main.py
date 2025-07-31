@@ -127,10 +127,6 @@ def get_ventes():
 def get_entrepots():
     return jsonify(entrepots)
 
-@app.route("/api/depots", methods=["GET"])
-def get_depots():
-    return jsonify(historique_depots)
-
 @app.route("/")
 def home():
     return "Hello Railway!"
