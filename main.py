@@ -75,6 +75,12 @@ def recevoir_donnee():
 
     if not all([joueur, entrepot, item, quantite, action]):
         return jsonify({"erreur": "donnée manquante"}), 400
+    
+    try:
+        quantite = int(quantite)
+    except (TypeError, ValueError):
+        return jsonify({"erreur": "quantité invalide"}), 400
+
 
     if entrepot not in entrepots:
         entrepots[entrepot] = {}
