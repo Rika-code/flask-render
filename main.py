@@ -6,7 +6,8 @@ import json
 from datetime import datetime, timedelta, time
 
 app = Flask(__name__)
-CORS(app)
+
+CORS(app, resources={r"/api/*": {"origins": "http://localhost:3000"}}, supports_credentials=True)
 
 entrepots = {}
 historique_depots = []
@@ -47,6 +48,11 @@ def prochain_dimanche_23h():
     jours_jusqua_dimanche = (6 - today.weekday()) % 7
     prochain = today + timedelta(days=jours_jusqua_dimanche)
     return datetime.combine(prochain.date(), time(23, 0))
+
+
+def save_data():
+    with open("entrepots.json", "w") as f:
+        json.dump(entrepots, f, indent=2)
 
 # Chargement initial des ventes
 ventes, derniere_reset = charger_ventes()
@@ -136,6 +142,22 @@ def get_entrepots():
 @app.route("/")
 def home():
     return "Hello Railway!"
+
+@app.route('/api/coffres/<entrepot>/<produit>', methods=['DELETE', 'OPTIONS'])
+def delete_product(entrepot, produit):
+    if request.method == 'OPTIONS':
+        # CORS preflight
+        return '', 200
+
+    global entrepots
+    if entrepot in entrepots and produit in entrepots[entrepot]:
+        del entrepots[entrepot][produit]
+        if not entrepots[entrepot]:
+            del entrepots[entrepot]
+        return jsonify({"message": "Produit supprimé"}), 200
+    else:
+        return jsonify({"error": "Produit non trouvé"}), 404
+
 
 # -------------------------- Lancement ------------------------ #
 if __name__ == "__main__":
