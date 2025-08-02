@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, time
 
 app = Flask(__name__)
 
-CORS(app, resources={r"/api/*": {"origins": "http://localhost:3000"}}, supports_credentials=True)
+CORS(app)
 
 entrepots = {}
 historique_depots = []
