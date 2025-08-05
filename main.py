@@ -13,6 +13,7 @@ entrepots = {}
 historique_depots = []
 VENTES_FILE = "ventes.json"
 
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "resetpizz7")
 # -------------------------- Base Employé (SQLite) ------------------------ #
 DB_PATH = "employes.db"
 
@@ -158,6 +159,18 @@ def delete_product(entrepot, produit):
     else:
         return jsonify({"error": "Produit non trouvé"}), 404
 
+@app.route("/api/ventes/reset", methods=["POST"])
+def reset_ventes():
+    data = request.json
+    password = data.get("password")
+
+    if password != ADMIN_PASSWORD:
+        return jsonify({"erreur": "Mot de passe incorrect"}), 403
+    
+    global ventes, derniere_reset
+    ventes = []
+    sauvegarder_ventes(ventes, derniere_reset)
+    return jsonify({"message": "ventes réinitialisées"}), 200
 
 # -------------------------- Lancement ------------------------ #
 if __name__ == "__main__":
