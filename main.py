@@ -6,30 +6,19 @@ import json
 from datetime import datetime, timedelta, time
 
 app = Flask(__name__)
-
 CORS(app)
 
-entrepots = {}
-historique_depots = []
-VENTES_FILE = "ventes.json"
-
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "resetpizz7")
-# -------------------------- Base Employé (SQLite) ------------------------ #
+# -------------------------- CONFIG -------------------------- #
 DB_PATH = "employes.db"
+VENTES_FILE = "ventes.json"
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "reset06")
 
-def get_employes_actifs():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("SELECT nom, prenom, grade FROM employes WHERE statut = 'actif'")
-    results = cursor.fetchall()
-    conn.close()
-    return [{"nom": n, "prenom": p, "grade": g} for (n, p, g) in results]
+# -------------------------- STOCKAGE ------------------------ #
+coffres = {}   # { "Distilling Co.": { "Sac De Céréales": 48 } }
+ventes = []
+derniere_reset = datetime.now()
 
-@app.route("/api/employes", methods=["GET"])
-def api_employes():
-    return jsonify(get_employes_actifs())
-
-# -------------------------- Gestion Ventes ------------------------ #
+# -------------------------- VENTES -------------------------- #
 def charger_ventes():
     if not os.path.exists(VENTES_FILE):
         return [], datetime.now()
@@ -44,135 +33,108 @@ def sauvegarder_ventes(ventes, derniere_reset):
             "derniere_reset": derniere_reset.isoformat()
         }, f, indent=2)
 
-def prochain_dimanche_23h():
-    today = datetime.now()
-    jours_jusqua_dimanche = (6 - today.weekday()) % 7
-    prochain = today + timedelta(days=jours_jusqua_dimanche)
-    return datetime.combine(prochain.date(), time(23, 0))
-
-
-def save_data():
-    with open("entrepots.json", "w") as f:
-        json.dump(entrepots, f, indent=2)
-
-# Chargement initial des ventes
 ventes, derniere_reset = charger_ventes()
 
-@app.before_request
-def verifier_reset_hebdo():
-    global ventes, derniere_reset
-    maintenant = datetime.now()
-    prochain_reset = prochain_dimanche_23h()
+# ---------------------- DB EMPLOYÉS ------------------------- #
+def get_employes_actifs():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT nom, prenom, grade FROM employes WHERE statut = 'actif'"
+    )
+    results = cursor.fetchall()
+    conn.close()
+    return [{"nom": n, "prenom": p, "grade": g} for (n, p, g) in results]
 
-    if derniere_reset < prochain_reset and maintenant >= prochain_reset:
-        print("🧹 Réinitialisation automatique des quotas (dimanche 23h)")
-        ventes = []
-        derniere_reset = maintenant
-        sauvegarder_ventes(ventes, derniere_reset)
+# -------------------------- API ------------------------------ #
+@app.route("/api/employes", methods=["GET"])
+def api_employes():
+    return jsonify(get_employes_actifs())
 
-# -------------------------- Webhooks ------------------------ #
-@app.route("/webhook", methods=["POST"])
-def recevoir_donnee():
-    data = request.json
-    joueur = data.get("joueur")
-    entrepot = data.get("entrepot")
-    item = data.get("item")
-    quantite = data.get("quantite")
-    action = data.get("action")
-
-    if not all([joueur, entrepot, item, quantite, action]):
-        return jsonify({"erreur": "donnée manquante"}), 400
-    
-    try:
-        quantite = int(quantite)
-    except (TypeError, ValueError):
-        return jsonify({"erreur": "quantité invalide"}), 400
-
-
-    if entrepot not in entrepots:
-        entrepots[entrepot] = {}
-
-    current_qte = entrepots[entrepot].get(item, 0)
-
-    if action == "déposé":
-        entrepots[entrepot][item] = current_qte + quantite
-        if item.lower() in ["tomate", "emmental"]:
-            historique_depots.append({
-                "joueur": joueur,
-                "item": item.lower(),
-                "quantite": quantite
-            })
-    elif action == "retiré":
-        entrepots[entrepot][item] = max(0, current_qte - quantite)
-    else:
-        return jsonify({"erreur": "action invalide"}), 400
-
-    print(f"📦 {joueur} a {action} {quantite}x {item} dans l'entrepôt #{entrepot}")
-    return jsonify({"message": "reçu"}), 200
-
-@app.route("/webhook/ventes", methods=["POST"])
-def recevoir_vente():
-    data = request.json
-    vendeur = data.get("vendeur")
-    item = data.get("item")
-    quantite = data.get("quantite")
-
-    if not all([vendeur, item, quantite]):
-        return jsonify({"erreur": "vente incomplète"}), 400
-
-    ventes.append({
-        "vendeur": vendeur,
-        "item": item,
-        "quantite": quantite
-    })
-
-    sauvegarder_ventes(ventes, derniere_reset)  # Sauvegarde à chaque ajout
-
-    print(f"📄 Vente enregistrée : {vendeur} a vendu {quantite}x {item}")
-    return jsonify({"message": "vente reçue"}), 200
-
-# -------------------------- API Public ------------------------ #
 @app.route("/api/ventes", methods=["GET"])
-def get_ventes():
+def api_ventes():
     return jsonify(ventes)
 
 @app.route("/api/coffres", methods=["GET"])
-def get_entrepots():
-    return jsonify(entrepots)
-
-@app.route("/")
-def home():
-    return "Hello Railway!"
-
-@app.route('/api/coffres/<entrepot>/<produit>', methods=['DELETE', 'OPTIONS'])
-def delete_product(entrepot, produit):
-    if request.method == 'OPTIONS':
-        # CORS preflight
-        return '', 200
-
-    global entrepots
-    if entrepot in entrepots and produit in entrepots[entrepot]:
-        del entrepots[entrepot][produit]
-        if not entrepots[entrepot]:
-            del entrepots[entrepot]
-        return jsonify({"message": "Produit supprimé"}), 200
-    else:
-        return jsonify({"error": "Produit non trouvé"}), 404
+def api_coffres():
+    return jsonify(coffres)
 
 @app.route("/api/ventes/reset", methods=["POST"])
 def reset_ventes():
     data = request.json
-    password = data.get("password")
-
-    if password != ADMIN_PASSWORD:
+    if data.get("password") != ADMIN_PASSWORD:
         return jsonify({"erreur": "Mot de passe incorrect"}), 403
-    
+
     global ventes, derniere_reset
     ventes = []
+    derniere_reset = datetime.now()
     sauvegarder_ventes(ventes, derniere_reset)
+
     return jsonify({"message": "ventes réinitialisées"}), 200
 
-# -------------------------- Lancement ------------------------ #
+# ------------------------ WEBHOOK COFFRE -------------------- #
+@app.route("/webhook", methods=["POST"])
+def recevoir_coffre():
+    data = request.json
+
+    joueur = data.get("joueur")
+    job = data.get("job")
+    item = data.get("item_label")
+    quantite = data.get("quantite")
+    action = data.get("action")
+
+    if not all([joueur, job, item, quantite, action]):
+        return jsonify({"erreur": "donnée manquante"}), 400
+
+    quantite = int(quantite)
+
+    if job not in coffres:
+        coffres[job] = {}
+
+    actuel = coffres[job].get(item, 0)
+
+    if action == "dépot":
+        coffres[job][item] = actuel + quantite
+    elif action == "retrait":
+        coffres[job][item] = max(0, actuel - quantite)
+    else:
+        return jsonify({"erreur": "action invalide"}), 400
+
+    print(f"📦 [{job}] {joueur} a {action} {quantite}x {item}")
+    return jsonify({"message": "coffre reçu"}), 200
+
+# ------------------------ WEBHOOK VENTES -------------------- #
+@app.route("/webhook/ventes", methods=["POST"])
+def recevoir_vente():
+    data = request.json
+
+    ventes.append({
+        "vendeur": data.get("vendeur"),
+        "item": data.get("item_label"),
+        "item_id": data.get("item_id"),
+        "quantite": data.get("quantite"),
+        "montant_total": data.get("montant_total"),
+        "montant_societe": data.get("montant_societe"),
+        "job": data.get("job"),
+        "date": data.get("date")
+    })
+
+    sauvegarder_ventes(ventes, derniere_reset)
+
+    print(
+        f"🧾 [{data.get('job')}] "
+        f"{data.get('vendeur')} → "
+        f"{data.get('quantite')}x {data.get('item_label')}"
+    )
+
+    return jsonify({"message": "vente reçue"}), 200
+
+# -------------------------- HOME ----------------------------- #
+@app.route("/")
+def home():
+    return "Hello Railway!"
+
+# ------------------------ LANCEMENT -------------------------- #
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))  # Railway fournit le port
+    port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
