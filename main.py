@@ -103,15 +103,17 @@ def reset_ventes():
 # ------------------------ WEBHOOK COFFRE -------------------- #
 @app.route("/webhook", methods=["POST"])
 def recevoir_coffre():
-    data = request.json
+    data = request.json or {}
 
-    joueur = data.get("joueur")
-    job = data.get("job")
+    joueur = data.get("joueur", "inconnu")
+    job = data.get("job", "global")
     item = data.get("item_label")
     quantite = data.get("quantite")
     action = data.get("action")
 
-    if not all([joueur, job, item, quantite, action]):
+    # champs réellement indispensables
+    if not all([item, quantite, action]):
+        print("❌ Données manquantes :", data)
         return jsonify({"erreur": "donnée manquante"}), 400
 
     quantite = int(quantite)
@@ -130,6 +132,7 @@ def recevoir_coffre():
 
     print(f"📦 [{job}] {joueur} a {action} {quantite}x {item}")
     return jsonify({"message": "coffre reçu"}), 200
+
 
 # ------------------------ WEBHOOK VENTES -------------------- #
 @app.route("/webhook/ventes", methods=["POST"])
