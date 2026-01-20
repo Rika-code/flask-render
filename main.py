@@ -35,6 +35,12 @@ def sauvegarder_ventes(ventes, derniere_reset):
 
 ventes, derniere_reset = charger_ventes()
 
+@app.route("/api/ventes/save", methods=["POST"])
+def force_save_ventes():
+    sauvegarder_ventes(ventes, derniere_reset)
+    return jsonify({"message": "ventes sauvegardées"}), 200
+
+
 # ---------------------- DB EMPLOYÉS ------------------------- #
 def get_employes_actifs():
     conn = sqlite3.connect(DB_PATH)
@@ -47,6 +53,28 @@ def get_employes_actifs():
     return [{"nom": n, "prenom": p, "grade": g} for (n, p, g) in results]
 
 # -------------------------- API ------------------------------ #
+@app.route("/api/coffres/<path:entrepot>/<path:produit>", methods=["DELETE", "OPTIONS"])
+def delete_coffre_produit(entrepot, produit):
+    # Préflight CORS
+    if request.method == "OPTIONS":
+        response = jsonify({})
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "DELETE, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        return response, 200
+
+    # Suppression réelle
+    if entrepot in coffres and produit in coffres[entrepot]:
+        del coffres[entrepot][produit]
+
+        if not coffres[entrepot]:
+            del coffres[entrepot]
+
+        print(f"🗑️ Produit supprimé : [{entrepot}] {produit}")
+        return jsonify({"message": "Produit supprimé"}), 200
+
+    return jsonify({"error": "Produit non trouvé"}), 404
+
 @app.route("/api/employes", methods=["GET"])
 def api_employes():
     return jsonify(get_employes_actifs())
@@ -115,14 +143,12 @@ def recevoir_vente():
         "quantite": data.get("quantite"),
         "montant_total": data.get("montant_total"),
         "montant_societe": data.get("montant_societe"),
-        "job": data.get("job"),
         "date": data.get("date")
     })
 
     sauvegarder_ventes(ventes, derniere_reset)
 
     print(
-        f"🧾 [{data.get('job')}] "
         f"{data.get('vendeur')} → "
         f"{data.get('quantite')}x {data.get('item_label')}"
     )
